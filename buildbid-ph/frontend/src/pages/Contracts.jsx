@@ -8,10 +8,10 @@ import {
 } from "lucide-react";
 
 
-const [selected, setSelected] = useState(null);
-const [showSign, setShowSign] = useState(false);
 
-const [previewImage, setPreviewImage] = useState(null);
+
+
+
 
 
 const statusConfig = {
@@ -32,8 +32,11 @@ function fmt(n) {
 export default function Contracts() {
   const { user } = useAuth();
   const { toast } = useToast();
+
   const [selected, setSelected] = useState(null);
-  const [showSign, setShowSign] = useState(false);
+ const [showSign, setShowSign] = useState(false);
+ const [previewImage, setPreviewImage] = useState(null);
+
   const [signatureInput, setSignatureInput] = useState("");
   const [signatureError, setSignatureError] = useState("");
   const [showPaymentModal, setShowPaymentModal] = useState(false);
