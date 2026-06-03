@@ -1,0 +1,610 @@
+// BuildBid PH – Prisma Schema
+// PostgreSQL (Supabase) Database
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  //directUrl = env("DIRECT_URL")
+}
+
+// ─── Enums ────────────────────────────────────────────────────────────────────
+
+enum Role {
+  CLIENT
+  CONTRACTOR
+  ADMIN
+}
+
+enum ProjectStatus {
+  DRAFT
+  OPEN
+  BIDDING
+  AWARDED
+  CLOSED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+  DISPUTED
+}
+
+enum BidStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  DECLINED
+  WITHDRAWN
+}
+
+enum ContractStatus {
+  DRAFT
+  PENDING_CLIENT_SIGN
+  PENDING_CONTRACTOR_SIGN
+  PENDING_ADMIN
+  ACTIVE
+  COMPLETED
+  DISPUTED
+  CANCELLED
+}
+
+enum PaymentStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  REFUNDED
+}
+
+enum PaymentType {
+  DOWNPAYMENT
+  PROGRESS
+  COMPLETION
+  PENALTY
+  REFUND
+}
+
+enum PaymentMethod {
+  BANK_TRANSFER
+  GCASH
+  PAYMAYA
+}
+
+enum ChangeRequestStatus {
+  NONE
+  REQUESTED
+  APPROVED
+  REJECTED
+}
+
+enum VerificationStatus {
+  UNVERIFIED
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
+enum DocumentType {
+  NBI_CLEARANCE
+  PCAB_LICENSE
+  DTI_REGISTRATION
+  VALID_ID
+  CERTIFICATION
+  BARANGAY_CLEARANCE
+  BIR_REGISTRATION
+  OTHER
+}
+
+enum NotificationType {
+  NEW_BID
+  BID_ACCEPTED
+  BID_REJECTED
+  CONTRACT_READY
+  CONTRACT_SIGNED
+  PAYMENT_RECEIVED
+  PAYMENT_DUE
+  PAYMENT_UPLOADED
+PAYMENT_APPROVED
+PAYMENT_REJECTED
+CHANGE_REQUEST
+CHANGE_APPROVED
+CHANGE_REJECTED
+  PROJECT_UPDATE
+  VERIFICATION_APPROVED
+  VERIFICATION_REJECTED
+  NEW_MESSAGE
+  SYSTEM
+}
+
+enum UserStatus {
+  PENDING
+  VERIFIED
+  REJECTED
+  SUSPENDED
+}
+
+enum AuditActionType {
+  CREATE
+  UPDATE
+  DELETE
+  APPROVE
+  REJECT
+  SIGN
+  PAY
+  LOGIN
+  LOGOUT
+  VERIFY
+  SUSPEND
+  REACTIVATE
+}
+
+// ─── User ─────────────────────────────────────────────────────────────────────
+
+model User {
+  id            Int        @id @default(autoincrement())
+  email         String     @unique
+  password      String
+  name          String
+  phone         String?
+  avatar        String?
+  role          Role       @default(CLIENT)
+  userStatus    UserStatus @default(PENDING)
+  isActive      Boolean    @default(true)
+  emailVerified Boolean    @default(false)
+  approvedAt    DateTime?
+  approvedBy    Int?
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  // Relations
+  client           ClientProfile?
+  contractor       ContractorProfile?
+  admin            Admin?
+  messagesSent     Message[]          @relation("SentMessages")
+  messagesReceived Message[]          @relation("ReceivedMessages")
+  notifications    Notification[]
+  passwordResets   PasswordReset[]
+  verificationLogs VerificationLog[]
+  auditLogs        AuditLog[]
+
+  @@index([email])
+  @@index([role])
+  @@index([userStatus])
+  @@index([createdAt])
+}
+
+// ─── Client ───────────────────────────────────────────────────────────────────
+
+model ClientProfile {
+  id        Int       @id @default(autoincrement())
+  userId    Int       @unique
+  address   String?
+  city      String?
+  projects  Project[]
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+// ─── Contractor ───────────────────────────────────────────────────────────────
+
+model ContractorProfile {
+  id                 Int                @id @default(autoincrement())
+  userId             Int                @unique
+  companyName        String?
+  licenseNumber      String?
+  yearsExperience    Int?
+  specializations    String?
+  address            String?
+  city               String?
+  verificationStatus VerificationStatus @default(UNVERIFIED)
+  verifiedAt         DateTime?
+  verifiedBy         Int?
+  rating             Float?             @default(0)
+  completedProjects  Int                @default(0)
+  bio                String?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  user      User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bids      Bid[]
+  documents VerificationDocument[]
+  contracts Contract[]
+
+  @@index([verificationStatus])
+  @@index([userId])
+}
+
+// ─── Admin ────────────────────────────────────────────────────────────────────
+
+model Admin {
+  id        Int      @id @default(autoincrement())
+  userId    Int      @unique
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+// ─── Verification Document ────────────────────────────────────────────────────
+
+model VerificationDocument {
+  id           Int          @id @default(autoincrement())
+  contractorId Int
+  type         DocumentType
+  fileName     String
+  filePath     String
+  fileSize     Int?
+  mimeType     String?
+  isApproved   Boolean?
+  reviewNote   String?
+  reviewedAt   DateTime?
+  uploadedAt   DateTime     @default(now())
+
+  contractor ContractorProfile @relation(fields: [contractorId], references: [id], onDelete: Cascade)
+
+  @@index([contractorId])
+  @@index([uploadedAt])
+}
+
+// ─── Verification Log (Audit Trail) ───────────────────────────────────────────
+
+model VerificationLog {
+  id                  Int                 @id @default(autoincrement())
+  userId              Int
+  actionType          AuditActionType
+  actionBy            Int?
+  oldStatus           UserStatus?
+  newStatus           UserStatus?
+  oldContractorStatus VerificationStatus?
+  newContractorStatus VerificationStatus?
+  reason              String?
+  notes               String?
+  metadata            String?
+  createdAt           DateTime            @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([actionType])
+  @@index([createdAt])
+}
+
+// ─── Audit Log (System-wide) ──────────────────────────────────────────────────
+
+model AuditLog {
+  id           Int             @id @default(autoincrement())
+  userId       Int
+  actionType   AuditActionType
+  resourceType String
+  resourceId   Int?
+  changes      String?
+  ipAddress    String?
+  userAgent    String?
+  metadata     String?
+  createdAt    DateTime        @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([actionType])
+  @@index([resourceType])
+  @@index([createdAt])
+}
+
+// ─── Project ──────────────────────────────────────────────────────────────────
+
+model Project {
+  id           Int           @id @default(autoincrement())
+  clientId     Int
+  title        String
+  description  String
+  category     String?
+  budget       Decimal       @db.Decimal(15, 2)
+  location     String
+  city         String?
+  province     String?
+  deadline     DateTime
+  status       ProjectStatus @default(OPEN)
+  scope        String?
+  materials    String?
+  viewCount    Int           @default(0)
+  isActive     Boolean       @default(true)
+  awardedBidId Int?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  client       ClientProfile @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  bids         Bid[]
+  contract     Contract?
+  payments     Payment[]
+  projectFiles ProjectFile[]
+
+  @@index([clientId])
+  @@index([status])
+  @@index([city])
+  @@index([createdAt])
+}
+
+// ─── Project File ─────────────────────────────────────────────────────────────
+
+model ProjectFile {
+  id         Int      @id @default(autoincrement())
+  projectId  Int
+  fileName   String
+  filePath   String
+  fileSize   Int?
+  mimeType   String?
+  uploadedAt DateTime @default(now())
+
+  project Project @relation(fields: [projectId], references: [id])
+
+  @@index([projectId])
+}
+
+// ─── Bid ──────────────────────────────────────────────────────────────────────
+
+model Bid {
+  id                   Int                 @id @default(autoincrement())
+  projectId            Int
+  contractorId         Int
+  amount               Decimal             @db.Decimal(15, 2)
+  proposal             String
+  laborCost            Decimal?            @db.Decimal(15, 2)
+  materialCost         Decimal?            @db.Decimal(15, 2)
+  estimatedDays        Int?
+  completionDate       DateTime?
+  targetCompletionDate DateTime? // For contractor's estimated project completion
+  status               BidStatus           @default(PENDING)
+  isShortlisted        Boolean             @default(false)
+  clientNote           String?
+  changeRequestStatus  ChangeRequestStatus @default(NONE)
+  changeRequestData    String? // JSON: {field: oldValue, newValue, reason}
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @updatedAt
+
+  project    Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  contractor ContractorProfile @relation(fields: [contractorId], references: [id], onDelete: Cascade)
+  bidFiles   BidFile[]
+
+  @@unique([projectId, contractorId])
+  @@index([projectId])
+  @@index([contractorId])
+  @@index([status])
+}
+
+// ─── Bid File ─────────────────────────────────────────────────────────────────
+
+model BidFile {
+  id         Int      @id @default(autoincrement())
+  bidId      Int
+  fileName   String
+  filePath   String
+  fileSize   Int?
+  mimeType   String?
+  uploadedAt DateTime @default(now())
+
+  bid Bid @relation(fields: [bidId], references: [id], onDelete: Cascade)
+
+  @@index([bidId])
+}
+
+// ─── Contract ─────────────────────────────────────────────────────────────────
+
+model Contract {
+  id                   Int            @id @default(autoincrement())
+  projectId            Int            @unique
+  contractorId         Int
+  contractNumber       String         @unique
+  terms                String
+  totalAmount          Decimal        @db.Decimal(15, 2)
+  downpaymentPercent   Int            @default(50)
+  startDate            DateTime?
+  endDate              DateTime?
+  targetCompletionDate DateTime? // Contractor's estimated completion date from bid
+  status               ContractStatus @default(DRAFT)
+  clientSignature      String?
+  clientSignedAt       DateTime?
+  contractorSignature  String?
+  contractorSignedAt   DateTime?
+  adminApprovedAt      DateTime?
+  adminApprovedBy      Int?
+  pdfPath              String?
+  notes                String?
+  createdAt            DateTime       @default(now())
+  updatedAt            DateTime       @updatedAt
+
+  changeRequestStatus ChangeRequestStatus @default(NONE)
+
+  changeRequestField  String?
+  changeRequestValue  String?
+  changeRequestReason String?
+
+  changeApprovedAt DateTime?
+  changeApprovedBy Int?
+
+  project            Project             @relation(fields: [projectId], references: [id])
+  contractor         ContractorProfile   @relation(fields: [contractorId], references: [id])
+  payments           Payment[]
+  contractFiles      ContractFile[]
+  contractSignatures ContractSignature[]
+
+  @@index([contractorId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+// ─── Contract File ────────────────────────────────────────────────────────────
+
+model ContractFile {
+  id         Int      @id @default(autoincrement())
+  contractId Int
+  fileName   String
+  filePath   String
+  fileSize   Int?
+  mimeType   String?
+  uploadedAt DateTime @default(now())
+
+  contract Contract @relation(fields: [contractId], references: [id])
+
+  @@index([contractId])
+}
+
+// ─── Contract Signature ────────────────────────────────────────────────────────
+
+model ContractSignature {
+  id            Int      @id @default(autoincrement())
+  contractId    Int
+  signerRole    Role
+  signatureData String
+  signedAt      DateTime @default(now())
+  ipAddress     String?
+  userAgent     String?
+
+  contract Contract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+
+  @@index([contractId])
+  @@index([signerRole])
+}
+
+// ─── Payment ──────────────────────────────────────────────────────────────────
+
+model Payment {
+  id              Int            @id @default(autoincrement())
+  contractId      Int
+  projectId       Int
+  type            PaymentType
+  amount          Decimal        @db.Decimal(15, 2)
+  status          PaymentStatus  @default(PENDING)
+  paymentMethod   PaymentMethod?
+  proofOfPayment  String?
+  proofScreenshot String? // Path to payment receipt screenshot
+  referenceNumber String?        @unique
+  dueDate         DateTime?
+  paidAt          DateTime?
+  notes           String?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  contract    Contract     @relation(fields: [contractId], references: [id])
+  project     Project      @relation(fields: [projectId], references: [id])
+  paymentLogs PaymentLog[]
+
+  @@index([contractId])
+  @@index([projectId])
+  @@index([status])
+}
+
+// ─── Payment Log ──────────────────────────────────────────────────────────────
+
+model PaymentLog {
+  id             Int           @id @default(autoincrement())
+  paymentId      Int
+  previousStatus PaymentStatus
+  newStatus      PaymentStatus
+  action         String
+  metadata       String?
+  createdAt      DateTime      @default(now())
+
+  payment Payment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+
+  @@index([paymentId])
+  @@index([createdAt])
+}
+
+// ─── Message ──────────────────────────────────────────────────────────────────
+
+model Message {
+  id         Int       @id @default(autoincrement())
+  senderId   Int
+  receiverId Int
+  content    String
+  isRead     Boolean   @default(false)
+  readAt     DateTime?
+  createdAt  DateTime  @default(now())
+
+  sender   User @relation("SentMessages", fields: [senderId], references: [id], onDelete: Cascade)
+  receiver User @relation("ReceivedMessages", fields: [receiverId], references: [id], onDelete: Cascade)
+
+  @@index([senderId])
+  @@index([receiverId])
+  @@index([createdAt])
+}
+
+// ─── Notification ─────────────────────────────────────────────────────────────
+
+model Notification {
+  id        Int              @id @default(autoincrement())
+  userId    Int
+  type      NotificationType
+  title     String
+  message   String
+  link      String?
+  isRead    Boolean          @default(false)
+  readAt    DateTime?
+  metadata  String?
+  createdAt DateTime         @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([isRead])
+  @@index([createdAt])
+}
+
+// ─── Password Reset ───────────────────────────────────────────────────────────
+
+model PasswordReset {
+  id        Int       @id @default(autoincrement())
+  userId    Int
+  token     String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+// ─── Appointment ──────────────────────────────────────────────────────────────
+
+model Appointment {
+  id           Int      @id @default(autoincrement())
+  userId       Int
+  title        String
+  description  String?
+  type         String
+  date         DateTime
+  projectId    Int?
+  participants String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([userId])
+  @@index([date])
+}
+
+// ─── Todo ─────────────────────────────────────────────────────────────────────
+
+model Todo {
+  id        Int       @id @default(autoincrement())
+  userId    Int
+  task      String
+  isDone    Boolean   @default(false)
+  priority  String    @default("medium")
+  dueDate   DateTime?
+  projectId Int?
+  doneAt    DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([userId])
+  @@index([dueDate])
+}
