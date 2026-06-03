@@ -6,6 +6,7 @@ const rateLimit = require("express-rate-limit");
 const { Server } = require("socket.io");
 require("dotenv").config();
 
+const path = require("path");
 const authRoutes = require("./routes/auth");
 const userRoutes = require("./routes/users");
 const projectRoutes = require("./routes/projects");
@@ -21,6 +22,7 @@ const { setupSocket } = require("./socket");
 const { requestLogger, notFound, errorHandler } = require("./middleware/errorHandler");
 
 const app = express();
+app.set("trust proxy", 1);
 const server = http.createServer(app);
 
 const allowedOrigins = [

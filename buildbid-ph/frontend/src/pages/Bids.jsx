@@ -26,6 +26,7 @@ export default function Bids() {
   const [activeTab, setActiveTab] = useState(isClient ? "received" : "submitted");
   const [projectStatusTab, setProjectStatusTab] = useState("open"); // open or closed
   const [selectedBid, setSelectedBid] = useState(null);
+  const [previewImage, setPreviewImage] = useState(null);
   const [compareProjectId, setCompareProjectId] = useState(null);
   const [bids, setBids] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -338,15 +339,15 @@ export default function Bids() {
                           </div>
 
 
-{bid.images?.length > 0 && (
+{bid.bidFiles?.length > 0 && (
   <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mt-3">
-    {bid.images.map((image) => (
+    {bid.bidFiles.map((file) => (
       <img
-        key={image.id}
-        src={image.url}
-        alt="Bid"
+        key={file.id}
+        src={file.filePath}
+        alt={file.fileName}
         className="w-full h-32 rounded-lg object-cover cursor-pointer"
-        onClick={() => setPreviewImage(image.url)}
+        onClick={() => setPreviewImage(file.filePath)}
       />
     ))}
   </div>

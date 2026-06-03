@@ -7,6 +7,13 @@ import {
   Shield, CreditCard, X, Upload, FileCheck, ArrowRight, Info
 } from "lucide-react";
 
+
+const [selected, setSelected] = useState(null);
+const [showSign, setShowSign] = useState(false);
+
+const [previewImage, setPreviewImage] = useState(null);
+
+
 const statusConfig = {
   DRAFT: { label: "Draft", color: "bg-gray-100 text-gray-600", icon: FileText },
   PENDING_CLIENT_SIGN: { label: "Awaiting Client Signature", color: "bg-amber-100 text-amber-700", icon: Pen },

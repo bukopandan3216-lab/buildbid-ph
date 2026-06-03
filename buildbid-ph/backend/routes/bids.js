@@ -8,6 +8,7 @@ const { authenticate, authorize, requireVerified } = require("../middleware/auth
 
 const prisma = new PrismaClient();
 
+
 const bidStorage = multer.diskStorage({
   destination: (req, file, cb) => {
     const dir = path.join("uploads", "bids");
@@ -42,7 +43,7 @@ router.get("/project/:projectId", authenticate, async (req, res) => {
 
     const bids = await prisma.bid.findMany({
       where: {
-            rojectId: Number(req.params.projectId)
+            projectId: Number(req.params.projectId)
 },// changed from projectId: Number(req.params.projectId) to allow Prisma to handle type conversion
       include: {
   images: true,
