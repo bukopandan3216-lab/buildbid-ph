@@ -15,12 +15,36 @@ import Notifications from "./pages/Notifications";
 import Analytics from "./pages/Analytics";
 import Layout from "./components/Layout";
 
+/*
 function ProtectedRoute({ children, roles }) {
   const { user, isAuthenticated } = useAuth();
   if (!isAuthenticated) return <Navigate to="/login" replace />;
   if (roles && !roles.map((r) => r.toUpperCase()).includes(user?.role?.toUpperCase())) {
     return <Navigate to="/dashboard" replace />;
   }
+  return children;
+}
+*/
+function ProtectedRoute({ children, roles }) {
+  const { user, isAuthenticated, loading } = useAuth();
+
+  if (loading) {
+    return <div>Loading...</div>;
+  }
+
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace />;
+  }
+
+  if (
+    roles &&
+    !roles
+      .map((r) => r.toUpperCase())
+      .includes(user?.role?.toUpperCase())
+  ) {
+    return <Navigate to="/dashboard" replace />;
+  }
+
   return children;
 }
 
