@@ -415,9 +415,11 @@ export default function Payments() {
 
       {/* Receipt / Detail Modal */}
       {showReceiptModal && selectedPayment && (
+        
         (() => {
           const ReceiptStatusIcon = statusConfig[selectedPayment.status]?.icon || Clock;
           return (
+       //     console.log("selectedPayment", selectedPayment);
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowReceiptModal(false)}>
           <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
             {/* Header */}

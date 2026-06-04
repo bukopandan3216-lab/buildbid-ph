@@ -318,6 +318,7 @@ export default function Contracts() {
         <div className="space-y-3">
           {contracts.map((contract) => {
             console.log(contract);
+            console.log(JSON.stringify(contract, null, 2));
             const StatusIcon = statusConfig[contract.status]?.icon || FileText;
             const step = getContractStep(contract);
             const downpaymentAmount = Number(contract.totalAmount) * 0.5 //(contract.downpaymentPercent || 50) / 100;
