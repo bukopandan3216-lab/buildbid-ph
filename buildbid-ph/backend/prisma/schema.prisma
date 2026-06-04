@@ -62,6 +62,7 @@ enum PaymentType {
   DOWNPAYMENT
   PROGRESS
   COMPLETION
+  FINAL_PAYMENT
   PENALTY
   REFUND
 }
@@ -522,10 +523,7 @@ model PaymentLog {
 
 
 
-enum PaymentType {
-  DOWNPAYMENT
-  FINAL_PAYMENT
-}
+
 
 
 // ─── Message ──────────────────────────────────────────────────────────────────
