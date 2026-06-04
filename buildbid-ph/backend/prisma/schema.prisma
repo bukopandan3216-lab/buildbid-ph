@@ -518,6 +518,16 @@ model PaymentLog {
   @@index([createdAt])
 }
 
+
+
+
+
+enum PaymentType {
+  DOWNPAYMENT
+  FINAL_PAYMENT
+}
+
+
 // ─── Message ──────────────────────────────────────────────────────────────────
 
 model Message {

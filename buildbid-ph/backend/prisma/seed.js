@@ -1,9 +1,11 @@
+require("dotenv").config();
 const { PrismaClient } = require("@prisma/client");
 const bcrypt = require("bcryptjs");
 
 const prisma = new PrismaClient();
 
 async function main() {
+  console.log("DATABASE_URL:", process.env.DATABASE_URL);
   console.log("🌱 Seeding BuildBid PH database...");
 
   // Clean existing data

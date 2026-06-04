@@ -6,6 +6,10 @@ const fs = require("fs");
 const { PrismaClient } = require("@prisma/client");
 const { authenticate, authorize } = require("../middleware/auth");
 
+
+const supabase = require("../config/supabase");
+
+
 const prisma = new PrismaClient();
 const PAYMENT_METHODS = new Set(["BANK_TRANSFER", "GCASH", "PAYMAYA"]);
 
@@ -115,7 +119,28 @@ router.put(
         });
       }
 
-      const proofPath = req.file.path.replace(/\\/g, "/");
+
+
+     const fileBuffer = fs.readFileSync(req.file.path);
+
+const fileName = `payments/${Date.now()}-${req.file.originalname}`;
+
+const { error } = await supabase.storage
+  .from("payment-proofs")
+  .upload(fileName, fileBuffer, {
+    contentType: req.file.mimetype,
+    upsert: false
+  });
+
+if (error) {
+  throw error;
+}
+
+const { data } = supabase.storage
+  .from("payment-proofs")
+  .getPublicUrl(fileName);
+
+const proofPath = data.publicUrl;
 
       const updated = await prisma.payment.update({
         where: { id: payment.id },
@@ -156,45 +181,102 @@ router.put(
   }
 );
 
-router.put("/:id/approve",
+// ==========================================
+// PUT /api/payments/:id/approve
+// ==========================================
+router.put(
+  "/:id/approve",
   authenticate,
   authorize("ADMIN"),
   async (req, res) => {
     try {
       const payment = await prisma.payment.findUnique({
-  where: {
-    id: Number(req.params.id)
-  },
-  include: {
-    project: true,
-    contract: {
-      include: {
-        contractor: true
-      }
-    }
-  }
-});
+        where: { id: Number(req.params.id) },
+        include: {
+          project: true,
+          contract: {
+            include: { contractor: true }
+          }
+        }
+      });
 
-      if (!payment)
-        return res.status(404).json({
-          message: "Payment not found"
-        });
+      if (!payment) return res.status(404).json({ message: "Payment not found" });
 
       await prisma.$transaction(async (tx) => {
-
         await tx.payment.update({
-          where: {
-            id: payment.id
-          },
-          data: {
-            status: "COMPLETED"
-          }
+          where: { id: payment.id },
+          data: { status: "COMPLETED" }
         });
 
         await tx.contract.update({
-          where: {
-            id: payment.contractId
-          },
+          where: { id: payment.contractId },
+          data: {
+            status: "ACTIVE",
+            adminApprovedAt: new Date()
+          }
+        });
+
+        const remainingAmount = Number(payment.contract.totalAmount) - Number(payment.amount);
+
+        await tx.payment.create({
+          data: {
+            contractId: payment.contractId,
+            projectId: payment.projectId,
+            type: "FINAL_PAYMENT",
+            amount: remainingAmount,
+            status: "PENDING",
+            referenceNumber: `FINAL-${Date.now()}`
+          }
+        });
+
+        await tx.notification.create({
+          data: {
+            userId: payment.contract.contractor.userId,
+            type: "PAYMENT_APPROVED",
+            title: "Project Ready To Start",
+            message: "Downpayment has been verified. You may begin work.",
+            link: "/contracts"
+          }
+        });
+      });
+
+      res.json({ message: "Payment approved." });
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ message: "Server error." });
+    }
+  }
+);
+
+// ==========================================
+// PUT /api/payments/:id/verify
+// ==========================================
+router.put(
+  "/:id/verify",
+  authenticate,
+  authorize("ADMIN"),
+  async (req, res) => {
+    try {
+      const payment = await prisma.payment.findUnique({
+        where: { id: Number(req.params.id) },
+        include: {
+          project: true,
+          contract: {
+            include: { contractor: true }
+          }
+        }
+      });
+
+      if (!payment) return res.status(404).json({ message: "Payment not found" });
+
+      await prisma.$transaction(async (tx) => {
+        await tx.payment.update({
+          where: { id: payment.id },
+          data: { status: "COMPLETED" }
+        });
+
+        await tx.contract.update({
+          where: { id: payment.contractId },
           data: {
             status: "ACTIVE",
             adminApprovedAt: new Date()
@@ -202,38 +284,28 @@ router.put("/:id/approve",
         });
 
         await tx.notification.create({
-  data: {
-    userId: payment.contract.contractor.userId,
-    type: "PAYMENT_APPROVED",
-    title: "Project Ready To Start",
-    message: "Downpayment has been verified. You may begin work.",
-    link: "/contracts"
-  }
-});
-
-
-        await tx.project.update({
-          where: {
-            id: payment.projectId
-          },
           data: {
-            status: "IN_PROGRESS"
+            userId: payment.contract.contractor.userId,
+            type: "PAYMENT_APPROVED",
+            title: "Project Ready To Start",
+            message: "Downpayment has been verified. You may begin work.",
+            link: "/contracts"
           }
         });
 
+        await tx.project.update({
+          where: { id: payment.projectId },
+          data: { status: "IN_PROGRESS" }
+        });
       });
 
-      res.json({
-        message: "Payment approved."
-      });
-
+      res.json({ message: "Payment verified and approved." });
     } catch (err) {
       console.error(err);
-      res.status(500).json({
-        message: "Server error."
-      });
+      res.status(500).json({ message: "Server error." });
     }
-});
+  }
+);
 
 // GET /api/payments/summary — analytics summary
 router.get("/summary", authenticate, async (req, res) => {

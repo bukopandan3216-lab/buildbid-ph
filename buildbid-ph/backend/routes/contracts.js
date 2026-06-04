@@ -5,7 +5,13 @@ const { authenticate, authorize } = require("../middleware/auth");
 
 const prisma = new PrismaClient();
 
-const ALLOWED_CHANGE_FIELDS = new Set(["amount", "targetCompletionDate", "endDate", "terms", "scope"]);
+const ALLOWED_CHANGE_FIELDS = new Set([
+  "amount",
+  "targetCompletionDate",
+  "endDate",
+  "terms",
+  //"scope"
+]);
 
 function contractInclude() {
   return {
@@ -313,6 +319,7 @@ router.put("/:id/approve-change", authenticate, authorize("CLIENT"), async (req,
     });
     if (!contract) return res.status(404).json({ message: "Contract not found." });
 
+    
     const client = await prisma.clientProfile.findUnique({ where: { userId: req.userId } });
     if (contract.project.clientId !== client?.id) return res.status(403).json({ message: "Not authorized." });
     if (contract.changeRequestStatus !== "REQUESTED") return res.status(400).json({ message: "No pending change request." });
@@ -325,40 +332,36 @@ router.put("/:id/approve-change", authenticate, authorize("CLIENT"), async (req,
 
     const field = contract.changeRequestField;
     const value = contract.changeRequestValue;
-    const data = {
-      changeRequestStatus: "APPROVED",
-      changeApprovedAt: new Date(),
-      changeApprovedBy: req.userId,
-    };
 
-    //if (field === "amount") data.totalAmount = Number(value);
-    
-    const updateData = {};
+   const data = {
+  changeRequestStatus: "APPROVED",
+  changeApprovedAt: new Date(),
+  changeApprovedBy: req.userId,
+};
 
-if (field === "amount") {
-  updateData.totalAmount = Number(value);
+switch (field) {
+  case "amount":
+    data.totalAmount = Number(value);
+    break;
+
+  case "targetCompletionDate":
+    data.targetCompletionDate = new Date(value);
+    break;
+
+  case "endDate":
+    data.endDate = new Date(value);
+    break;
+
+  case "terms":
+    data.terms = value;
+    break;
 }
 
-if (field === "targetCompletionDate") {
-  updateData.targetCompletionDate = new Date(value);
-}
-
-await prisma.contract.update({
+const updated = await prisma.contract.update({
   where: { id: contract.id },
-  data: updateData,
+  data,
+  include: contractInclude(),
 });
-
-    if (field === "targetCompletionDate" || field === "endDate") {
-      data.targetCompletionDate = new Date(value);
-      data.endDate = new Date(value);
-    }
-    if (field === "terms" || field === "scope") data.terms = value;
-
-    const updated = await prisma.contract.update({
-      where: { id: contract.id },
-      data,
-      include: contractInclude(),
-    });
 
     await createNotification(contract.contractor.userId, {
       type: "CHANGE_APPROVED",
@@ -384,18 +387,19 @@ router.put("/:id/reject-change", authenticate, authorize("CLIENT"), async (req, 
     });
     if (!contract) return res.status(404).json({ message: "Contract not found." });
 
+    
     const client = await prisma.clientProfile.findUnique({ where: { userId: req.userId } });
     if (contract.project.clientId !== client?.id) return res.status(403).json({ message: "Not authorized." });
     if (contract.changeRequestStatus !== "REQUESTED") return res.status(400).json({ message: "No pending change request." });
 
     const updated = await prisma.contract.update({
-      where: { id: contract.id },
-      data: {
-        changeRequestStatus: "REJECTED",
-        changeRequestReason: reason?.trim() || contract.changeRequestReason,
-      },
-      include: contractInclude(),
-    });
+  where: { id: contract.id },
+  data: {
+    changeRequestStatus: "REJECTED",
+    changeRequestReason: reason?.trim() || contract.changeRequestReason,
+  },
+  include: contractInclude(),
+});
 
     await createNotification(contract.contractor.userId, {
       type: "CHANGE_REJECTED",
@@ -404,7 +408,10 @@ router.put("/:id/reject-change", authenticate, authorize("CLIENT"), async (req, 
       link: "/contracts",
     }, req);
 
-    res.json({ message: "Change request rejected.", contract: updated });
+   res.json({
+  message: "Change request rejected.",
+  contract: updated
+});
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "Server error." });
@@ -425,7 +432,7 @@ router.put("/:id/mark-complete", authenticate, authorize("CONTRACTOR"), async (r
 
     const updated = await prisma.contract.update({
       where: { id: contract.id },
-      data: { notes: "COMPLETION_REQUESTED" },
+      data: { status: "COMPLETION_REQUESTED" },
       include: contractInclude(),
     });
 
@@ -452,24 +459,24 @@ router.put("/:id/approve-completion", authenticate, authorize("CLIENT"), async (
     });
     if (!contract) return res.status(404).json({ message: "Contract not found." });
 
+    if (contract.status !== "COMPLETION_REQUESTED") {
+  return res.status(400).json({
+    message: "Project is not awaiting completion approval."
+  });
+}
+
     const client = await prisma.clientProfile.findUnique({ where: { userId: req.userId } });
     if (contract.project.clientId !== client?.id) return res.status(403).json({ message: "Not authorized." });
 
     const updated = await prisma.$transaction(async (tx) => {
       const saved = await tx.contract.update({
         where: { id: contract.id },
-        data: { status: "COMPLETED" },
+        data: {
+  status: "AWAITING_FINAL_PAYMENT"
+},
       });
       await tx.project.update({ where: { id: contract.projectId }, data: { status: "COMPLETED" } });
-      await tx.notification.create({
-  data: {
-    userId: payment.contract.contractor.userId,
-    type: "PAYMENT_APPROVED",
-    title: "Project Ready To Start",
-    message: "Downpayment has been verified. You may begin work.",
-    link: "/contracts"
-  }
-});
+      
       await tx.contractorProfile.update({
         where: { id: contract.contractorId },
         data: { completedProjects: { increment: 1 } },

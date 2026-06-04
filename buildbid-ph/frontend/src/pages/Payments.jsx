@@ -22,6 +22,7 @@ const statusConfig = {
 
 const typeLabels = {
   DOWNPAYMENT: "50% Downpayment",
+  FINAL_PAYMENT: "Remaining Balance",
   PROGRESS: "Progress Billing",
   COMPLETION: "Final Payment",
   PENALTY: "Penalty",
@@ -30,11 +31,17 @@ const typeLabels = {
 
 const typeColors = {
   DOWNPAYMENT: "bg-blue-50 text-blue-700",
+  FINAL_PAYMENT: "bg-green-50 text-green-700",
   PROGRESS: "bg-orange-50 text-orange-700",
   COMPLETION: "bg-green-50 text-green-700",
   PENALTY: "bg-red-50 text-red-700",
   REFUND: "bg-purple-50 text-purple-700",
 };
+
+
+
+
+
 
 function fmt(n) {
   return `₱${Number(n || 0).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -61,11 +68,21 @@ export default function Payments() {
 
   const filtered = filter === "all" ? payments : payments.filter((p) => p.status === filter);
 
+  const hasOutstandingPayment = payments.some(
+  p =>
+    p.status !== "COMPLETED" &&
+    (
+      p.type === "DOWNPAYMENT" ||
+      p.type === "FINAL_PAYMENT"
+    )
+);
   const totalPaid = summary.totalPaid ?? 0;
   const totalPending = summary.totalPending ?? 0;
   const totalProcessing = payments.filter((p) => p.status === "PROCESSING").reduce((s, p) => s + Number(p.amount), 0);
   const overdueCount = summary.overdueCount ?? 0;
 
+
+  
   // Build monthly chart from real data
   const monthlyMap = {};
   payments.forEach((p) => {
@@ -266,14 +283,24 @@ export default function Payments() {
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-2">
-                          {pay.status === "PENDING" && isClient && (
-                            <button
-                              onClick={() => { setSelectedPayment(pay); setShowUploadModal(true); }}
-                              className="flex items-center gap-1 text-xs bg-orange-50 text-orange-600 border border-orange-200 px-3 py-1.5 rounded-lg hover:bg-orange-100 font-medium whitespace-nowrap transition-colors"
-                            >
-                              <Upload size={11} /> Upload Proof
-                            </button>
-                          )}
+                          {pay.status === "PENDING" &&
+ isClient &&
+ (pay.type === "DOWNPAYMENT" ||
+  pay.type === "FINAL_PAYMENT") && (
+  <button
+    onClick={() => {
+      setSelectedPayment(pay);
+      setShowUploadModal(true);
+    }}
+    className="flex items-center gap-1 text-xs bg-orange-50 text-orange-600 border border-orange-200 px-3 py-1.5 rounded-lg hover:bg-orange-100"
+  >
+    <Upload size={11} />
+
+    {pay.type === "FINAL_PAYMENT"
+      ? "Pay Remaining Balance"
+      : "Upload Proof"}
+  </button>
+)}
                           {pay.status === "PROCESSING" && (
                             <span className="text-xs text-blue-600 bg-blue-50 border border-blue-200 px-3 py-1.5 rounded-lg whitespace-nowrap">
                               ⏳ Verifying...
@@ -321,7 +348,9 @@ export default function Payments() {
 
             <div className="bg-orange-50 border border-orange-200 rounded-xl p-3 mb-4">
               <p className="text-sm font-semibold text-orange-800">Amount Due: {fmt(selectedPayment.amount)}</p>
-              <p className="text-xs text-orange-600 mt-0.5">50% downpayment · {typeLabels[selectedPayment.type]}</p>
+              <p className="text-xs text-orange-600 mt-0.5">
+  {typeLabels[selectedPayment.type]}
+</p>
             </div>
 
             <div className="bg-gray-50 rounded-xl p-3 mb-4 text-xs text-gray-600 space-y-1">
@@ -462,18 +491,27 @@ export default function Payments() {
               )}
 
               {selectedPayment.proofOfPayment && (
-                <div className="border-t border-gray-100 pt-3">
-                  <p className="text-xs text-gray-400 mb-2">Proof of Payment</p>
-                  <a
-                    href={`${import.meta.env.VITE_API_URL || ""}/${selectedPayment.proofOfPayment}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center gap-2 text-sm text-blue-600 hover:underline"
-                  >
-                    <FileText size={14}/> View uploaded proof
-                  </a>
-                </div>
-              )}
+  <div className="border-t border-gray-100 pt-3">
+    <p className="text-xs text-gray-400 mb-2">
+      Proof of Payment
+    </p>
+
+    <img
+      src={selectedPayment.proofOfPayment}
+      alt="Proof of Payment"
+      className="w-full rounded-lg border border-gray-200 mb-2"
+    />
+
+    <a
+      href={selectedPayment.proofOfPayment}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="text-sm text-blue-600 hover:underline"
+    >
+      Open Full Image
+    </a>
+  </div>
+)}
 
               <div className="pt-2 border-t border-gray-100 flex gap-2">
                 {selectedPayment.status === "COMPLETED" && (
