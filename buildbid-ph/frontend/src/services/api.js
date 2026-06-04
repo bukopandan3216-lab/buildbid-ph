@@ -132,4 +132,18 @@ export const uploadsAPI = {
   avatar: (formData) => api.post("/upload/avatar", formData, { headers: { "Content-Type": undefined } }),
 };
 
+// ── File URL helper ───────────────────────────────────────────────────────────
+// Locally, Vite proxies /uploads → localhost:5000/uploads.
+// In production (Vercel), the frontend has no backend — we must use the full
+// backend URL stored in VITE_API_URL.
+export function getFileUrl(filePath) {
+  if (!filePath) return null;
+  // Already an absolute URL
+  if (filePath.startsWith("http://") || filePath.startsWith("https://")) return filePath;
+  const base = import.meta.env.VITE_API_URL || "";
+  // Ensure single leading slash
+  const normalised = filePath.startsWith("/") ? filePath : `/${filePath}`;
+  return `${base}${normalised}`;
+}
+
 export default api;

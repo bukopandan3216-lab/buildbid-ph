@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useContracts, useToast } from "../hooks";
-import { contractsAPI, paymentsAPI } from "../services/api";
+import { contractsAPI, paymentsAPI, getFileUrl } from "../services/api";
 import { useAuth } from "../context/AuthContext";
 import {
   FileText, CheckCircle, Clock, Download, Eye, Pen, AlertCircle,
@@ -40,6 +40,7 @@ export default function Contracts() {
   const [signatureInput, setSignatureInput] = useState("");
   const [signatureError, setSignatureError] = useState("");
   const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [showRemainingModal, setShowRemainingModal] = useState(false);
   const [paymentContract, setPaymentContract] = useState(null);
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState(null);
   const [proofFile, setProofFile] = useState(null);
@@ -128,6 +129,48 @@ export default function Contracts() {
       
       // Reset states
       setShowPaymentModal(false);
+      setProofFile(null);
+      setPaymentNotes("");
+      setSelectedPaymentMethod(null);
+    } catch (err) {
+      toast(err?.response?.data?.message || "Failed to submit payment proof.", "error");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function handleSubmitRemainingBalance() {
+    if (!proofFile) { 
+      toast("Please attach a payment receipt/proof.", "error"); 
+      return; 
+    }
+    if (!selectedPaymentMethod) {
+      toast("Please select a payment method.", "error");
+      return;
+    }
+    
+    setSubmitting(true);
+    try {
+      const form = new FormData();
+      form.append("proof", proofFile);
+      form.append("notes", paymentNotes || "");
+      form.append("paymentMethod", selectedPaymentMethod);
+      
+      // Find the REMAINING payment record
+      const remainingPayment = paymentContract?.payments?.find(p => p.type === "REMAINING" || p.type === "FINAL" || p.type === "BALANCE");
+      // Fallback: second payment in array (index 1)
+      const paymentId = remainingPayment?.id || paymentContract?.payments?.[1]?.id;
+      if (!paymentId) { 
+        toast("No remaining balance payment found for this contract.", "error"); 
+        setSubmitting(false); 
+        return; 
+      }
+      
+      await paymentsAPI.uploadProof(paymentId, form);
+      toast("Remaining balance payment proof submitted to admin for verification!", "success");
+      await refetch();
+      
+      setShowRemainingModal(false);
       setProofFile(null);
       setPaymentNotes("");
       setSelectedPaymentMethod(null);
@@ -323,7 +366,14 @@ export default function Contracts() {
             const step = getContractStep(contract);
             const downpaymentAmount = Number(contract.totalAmount) * 0.5 //(contract.downpaymentPercent || 50) / 100;
             const downpayment = contract.payments?.find(p => p.type === "DOWNPAYMENT");
+            const remainingPayment = contract.payments?.find(p => p.type === "REMAINING" || p.type === "FINAL" || p.type === "BALANCE") || contract.payments?.[1];
+            const remainingAmount = Number(contract.totalAmount) - Number(contract.totalAmount) * (contract.downpaymentPercent || 50) / 100;
             const needsDownpayment = isClient && step === "both_signed" && downpayment?.status === "PENDING";
+            const downpaymentPaid = downpayment?.status === "COMPLETED";
+            const needsRemainingPayment = isClient && downpaymentPaid && remainingPayment && remainingPayment.status === "PENDING";
+            const remainingUnderReview = remainingPayment?.status === "PROCESSING";
+            const remainingPaid = remainingPayment?.status === "COMPLETED";
+            const allPaid = downpaymentPaid && (remainingPaid || !remainingPayment);
 
             return (
               <div key={contract.id} className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm">
@@ -369,6 +419,15 @@ export default function Contracts() {
                     Downpayment {downpayment?.status === "COMPLETED" ? "paid" : downpayment?.status === "PROCESSING" ? "verifying" : "pending"}
                   </div>
                   <div className="w-6 h-px bg-gray-200" />
+                  {remainingPayment && (
+                    <>
+                      <div className={`flex items-center gap-1.5 ${remainingPaid ? "text-green-600" : remainingUnderReview ? "text-blue-600" : "text-gray-400"}`}>
+                        <CreditCard size={13} />
+                        Balance {remainingPaid ? "paid" : remainingUnderReview ? "verifying" : "pending"}
+                      </div>
+                      <div className="w-6 h-px bg-gray-200" />
+                    </>
+                  )}
                   <div className={`flex items-center gap-1.5 ${contract.adminApprovedAt ? "text-green-600" : "text-gray-400"}`}>
                     <Shield size={13} className={contract.adminApprovedAt ? "text-green-500" : ""} />
                     Admin {contract.adminApprovedAt ? "approved" : "pending"}
@@ -396,6 +455,24 @@ export default function Contracts() {
                     <div>
                       <p className="font-medium">Ready to Pay!</p>
                       <p className="text-xs mt-0.5">Both parties have signed. Click "Pay Downpayment" to proceed.</p>
+                    </div>
+                  </div>
+                )}
+                {needsRemainingPayment && (
+                  <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 mb-3 flex items-start gap-2 text-sm text-blue-700">
+                    <CreditCard size={15} className="mt-0.5 flex-shrink-0"/>
+                    <div>
+                      <p className="font-medium">Remaining Balance Due</p>
+                      <p className="text-xs mt-0.5">Please pay the remaining {fmt(remainingAmount)} to complete the contract.</p>
+                    </div>
+                  </div>
+                )}
+                {remainingUnderReview && (
+                  <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 mb-3 flex items-start gap-2 text-sm text-blue-700">
+                    <Clock size={15} className="mt-0.5 flex-shrink-0"/>
+                    <div>
+                      <p className="font-medium">Remaining Balance Under Review</p>
+                      <p className="text-xs mt-0.5">Admin is verifying your remaining balance payment.</p>
                     </div>
                   </div>
                 )}
@@ -436,6 +513,14 @@ export default function Contracts() {
                       <CreditCard size={14} /> Pay Downpayment
                     </button>
                   )}
+                  {needsRemainingPayment && (
+                    <button
+                      onClick={() => { setPaymentContract(contract); setShowRemainingModal(true); }}
+                      className="flex items-center gap-1.5 text-sm bg-blue-500 text-white px-3 py-1.5 rounded-lg hover:bg-blue-600 transition-colors"
+                    >
+                      <CreditCard size={14} /> Pay Remaining Balance
+                    </button>
+                  )}
                   {canRequestChange(contract) && (
                     <button
                       onClick={() => { setSelected(contract); setShowChangeRequest(true); }}
@@ -452,7 +537,7 @@ export default function Contracts() {
                       <Eye size={14} /> Review Change
                     </button>
                   )}
-                  {isContractor && contract.status === "ACTIVE" && contract.notes !== "COMPLETION_REQUESTED" && (
+                  {isContractor && contract.status === "ACTIVE" && contract.notes !== "COMPLETION_REQUESTED" && allPaid && (
                     <button
                       onClick={() => handleMarkComplete(contract)}
                       className="flex items-center gap-1.5 text-sm text-green-700 border border-green-200 px-3 py-1.5 rounded-lg hover:bg-green-50 transition-colors"
@@ -460,7 +545,7 @@ export default function Contracts() {
                       <CheckCircle size={14} /> Mark Complete
                     </button>
                   )}
-                  {isClient && contract.status === "ACTIVE" && contract.notes === "COMPLETION_REQUESTED" && (
+                  {isClient && contract.status === "ACTIVE" && contract.notes === "COMPLETION_REQUESTED" && allPaid && (
                     <button
                       onClick={() => handleApproveCompletion(contract)}
                       className="flex items-center gap-1.5 text-sm bg-green-500 text-white px-3 py-1.5 rounded-lg hover:bg-green-600 transition-colors"
